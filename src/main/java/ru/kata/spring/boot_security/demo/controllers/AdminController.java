@@ -34,9 +34,10 @@ public class AdminController {
     }
 
     @GetMapping("/users")
-    public String getUsersList(Model model, Principal principal, @ModelAttribute ("user") User user) {
-        Long id = userService.findByEmail(principal.getName()).get().getId();
-        model.addAttribute("user", userService.findById(id));
+    public String getUsersList(Model model, Principal principal) {
+        Optional<User> currentUserOpt = userService.findByEmail(principal.getName());
+        User currentUser = currentUserOpt.get();
+        model.addAttribute("currentUser", currentUser);
         model.addAttribute("users", userService.findAll());
         model.addAttribute("listRoles", roleService.findAll());
         return "admin_page";
@@ -67,27 +68,35 @@ public class AdminController {
         return "redirect:/admin/users/";
     }
 
-
-
-
     @PatchMapping("/users/edit")
     public String editUser(@ModelAttribute("user") @Valid User updatedUser,
                            BindingResult bindingResult, Model model) {
-        Optional<User> userByEmail = userService.findByEmail(updatedUser.getEmail());
-        if (userByEmail.isPresent() && (!userByEmail.get().getId().equals(updatedUser.getId()))) {
-            bindingResult.rejectValue("email", "error.email",
-                    "This email is already in use");
+        Optional<User> existingUserOpt = userService.findById(updatedUser.getId());
+
+        if (existingUserOpt.isEmpty()) {
+            bindingResult.rejectValue("id", "error.id", "User not found");
+        } else {
+            User existingUser = existingUserOpt.get();
+
+            Optional<User> userByEmail = userService.findByEmail(updatedUser.getEmail());
+            if (userByEmail.isPresent() && !userByEmail.get().getId().equals(updatedUser.getId())) {
+                bindingResult.rejectValue("email", "error.email", "This email is already in use");
+            }
+
+            if (bindingResult.hasErrors()) {
+                model.addAttribute("listRoles", roleService.findAll());
+                return "admin_page";
+            }
+
+            if (updatedUser.getRoles() == null || updatedUser.getRoles().isEmpty()) {
+                updatedUser.setRoles(existingUser.getRoles());
+            }
+
+            userService.updateUser(updatedUser);
         }
 
-        if (bindingResult.hasErrors()) {
-            model.addAttribute("listRoles", roleService.findAll());
-            return "admin_page";
-        }
-            updatedUser.setPassword(passwordEncoder.encode(updatedUser.getPassword()));
-        userService.updateUser(updatedUser);
         return "redirect:/admin/users";
     }
-
 
     @DeleteMapping("/users/delete")
     public String deleteUser(@RequestParam("id") Long id) {
